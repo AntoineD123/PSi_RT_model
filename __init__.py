@@ -1,7 +1,8 @@
 # Main class of the package
 import numpy as np
 from n_index import get_n_eff
-#from reflectance import tmm_get_R_T, save_data, load_prev_data, plot_show_R_T
+# Using https://doi.org/10.5281/zenodo.1344878
+from reflectance import tmm_get_R_T, save_data, load_prev_data, plot_show_R_T, plot_compare_R
 from set_layers import compute_t, get_opt_porosities
 from etch_recipe import load_values, get_I_dt
 
@@ -34,6 +35,10 @@ class PSiReflectanceSimulator:
     def show_R_T(self, image_name=None):
         lbd_nm = self.lbd * 1e9
         plot_show_R_T(lbd_nm, self.R, self.T, image_name)
+
+    def compare_R(self, loaded_simulator, im_name=None):
+        lbd_nm = self.lbd * 1e9
+        plot_compare_R(lbd_nm, self.R, other.R, im_name)
 
 class PSiOpticalStack:
     def __init__(self, n_method, p_J_r_data_location="data-Clementine"):
@@ -147,13 +152,15 @@ if __name__ == '__main__':
     stack = PSiOpticalStack(m)
     stack.reset_stack()
     t1, t2, p1, p2, N = stack.optimal_Bragg_stack(633e-9)
-    stack.add_Bragg_stack(t1, t2, p1, p2, N)
+    print("Impose N=10")
+    stack.add_Bragg_stack(t1, t2, p1, p2, 10)
+    # stack.add_Bragg_stack(0, 0, 0, 0, 40)
     t_supp = 80e-6  # 80 um support
     p_supp = 0.5
     stack.add_thick_layer(t_supp, p_supp)
-    #simu = PSiReflectanceSimulator(stack)
-    #simu.compute_refl_spectum()
-    #simu.show_R_T("test_output.png")
+    simu = PSiReflectanceSimulator(stack)
+    simu.compute_refl_spectum()
+    simu.show_R_T("simu_R_50-70p_Oox.png")
     stack.produce_I_dt_data()
 
 

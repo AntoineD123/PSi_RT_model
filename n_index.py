@@ -4,8 +4,8 @@ import sympy.abc
 
 um = 1e-6
 nm = 1e-9
-l_Si_um,   n_Si,   k_Si   = np.loadtxt("n_k_Si.txt", skiprows=1, unpack=True)
-l_SiO2_um, n_SiO2, k_SiO2 = np.loadtxt("n_k_SiO2.txt", skiprows=1, unpack=True)
+l_Si_um,   n_Si,   k_Si   = np.loadtxt("data-literature/n_k_Si.txt", skiprows=1, unpack=True)
+l_SiO2_um, n_SiO2, k_SiO2 = np.loadtxt("data-literature/n_k_SiO2.txt", skiprows=1, unpack=True)
 l_Si = l_Si_um*um
 l_SiO2 = l_SiO2_um*um
 

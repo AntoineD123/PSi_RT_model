@@ -35,13 +35,17 @@ def tmm_get_R_T(wavelength, t_arr, n_arr, c_arr):
     T = (s_data['T'] + p_data['T']) / 2.
     return R, T
 
-def save_data(lbd_arr, R_arr, T_arr):
-    np.savetxt("results/reflectance_transmittance.txt",
+def save_data(lbd_arr, R_arr, T_arr, fname=None):
+    if fname is None:
+        fname = "temp/reflectance_transmittance.txt"
+    np.savetxt(fname,
                np.transpose([lbd_arr, R_arr, T_arr]), header="lbd[m] R[-] T[-]")
 
-def load_prev_data():
+def load_prev_data(fname=None):
+    if fname is None:
+        fname = "temp/reflectance_transmittance.txt"
     # Get 'lbd, R, T' from previous execution
-    return np.loadtxt("results/reflectance_transmittance.txt", skiprows=1, unpack=True)
+    return np.loadtxt(fname, skiprows=1, unpack=True)
 
 def show_R_T_at_target(lbd, R, T, target_lbd):
     for i, l in enumerate(lbd):
@@ -54,11 +58,27 @@ def plot_show_R_T(lbd_nm, R, T, fname=None):
     plt.plot(lbd_nm, T, label="T")
 
     plt.xlabel("lbd [nm]")
-    plt.ylabel("r,t")
+    plt.ylabel("R, T [-]")
     plt.legend()
     if fname is not None:
         plt.savefig("results/"+fname)
     plt.show()
+
+def plot_compare_R(lbd_nm, R_ref, R_test, fname=None):
+    err = np.abs(R_ref - R_test)/R_ref * 100.
+    fig, ax = plt.subplots(1, 2)
+    ax[0].plot(lbd_nm, R_ref, label="Model")
+    ax[0].plot(lbd_nm, R_test, label="Measurement")
+    ax[1].plot(lbd_nm, err)
+
+    ax[0].set_xlabel("lbd [nm]")
+    ax[0].set_ylabel("R [-]")
+    ax[1].set_xlabel("lbd [nm]")
+    ax[1].set_ylabel("Error [%]")
+    ax[0].legend()
+    if fname is not None:
+        fig.savefig("results/" + fname)
+    fig.show()
 
 if __name__ == '__main__':
     # Param of the wave
