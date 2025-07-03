@@ -2,33 +2,29 @@
 import numpy as np
 from n_index import get_n_eff
 # Using https://doi.org/10.5281/zenodo.1344878
-from reflectance import allocate_matrices, tmm_get_R_T, save_data, load_prev_data, plot_show_R_T, plot_compare_R
+from reflectance import Optical_1D_local_simulator, Optical_1D_tmm_simulator, save_data, load_prev_data, plot_show_R_T, plot_compare_R
 from set_layers import compute_t, get_opt_porosities
 from etch_recipe import load_values, get_I_dt
 
 class PSiReflectanceSimulator:
     lbd_min_nm = 400
     lbd_max_nm = 850
-    def __init__(self, stack):
+    TMM_LIB_METHOD = 0
+    LOCAL_TMM_METHOD = 1
+    def __init__(self, stack, method=LOCAL_TMM_METHOD):
         self.stack = stack
+        if method == LOCAL_TMM_METHOD:
+            self.simulator = Optical_1D_local_simulator()
+        else:
+            self.simulator = Optical_1D_tmm_simulator()
         self.lbd = self.R = self.T = None
 
     def compute_refl_spectum(self, wavelengths=None):
         self.lbd = wavelengths
         if wavelengths is None:
             self.lbd = np.linspace(self.lbd_min_nm, self.lbd_max_nm, 100)*1e-9
-        n_wavelength = len(self.lbd)
-        self.R = np.zeros(n_wavelength)
-        self.T = np.zeros(n_wavelength)
         c_arr = stack.get_c_array()
-        allocate_matrices(c_arr)
-        for i_lbd, lbd in enumerate(self.lbd):
-            t_arr, n_arr = self.stack.get_t_n_arrays(lbd)
-            self.R[i_lbd], self.T[i_lbd] = tmm_get_R_T(lbd, t_arr, n_arr, c_arr)
-        return self.R, self.T
-        # TODO: adapted fct
-        # TODO: don't use tmm ; improve perf
-        # return tmm_compute(self.stack, lbd_arr)
+        return self.simulator.compute_R_T_spectrum(self.lbd, self.stack, c_arr)
 
     def save_spectrum(self):
         save_data(self.lbd, self.R, self.T)
@@ -68,7 +64,7 @@ class PSiReflectanceSimulator:
         while self.R[iR] > Rp/2.:
             iR += 1
         fwhm = self.lbd[iR] - self.lbd[iL]
-        return Rp, fwhm
+        return Rp, lbd_p, fwhm
 
 
 class PSiOpticalStack:
@@ -99,11 +95,11 @@ class PSiOpticalStack:
         self.append_index = 1
         # top semi-infinite layer
         self.layers_t.append(np.inf)
-        self.layers_p.append(0)
+        self.layers_p.append(1)
         self.layers_c.append('i')
         # low semi-infinite layer
         self.layers_t.append(np.inf)
-        self.layers_p.append(0)
+        self.layers_p.append(1)
         self.layers_c.append('i')
         # Repetitivity
         self.cells_mult = []
@@ -191,10 +187,10 @@ class PSiOpticalStack:
 
 
 class PSiRefractiveIndexMethod:
-    def __init__(self, medium="air"):
+    def __init__(self, method="Looyenga", rox=0., medium="air"):
         self.medium = medium
-        self.ox_rel_vol = 0.
-        self.mixing_method = "Looyenga"
+        self.ox_rel_vol = rox
+        self.mixing_method = method
 
     def get_complex_n(self, wavelength, porosity):
         return get_n_eff(porosity, wavelength, self.medium,
@@ -203,7 +199,7 @@ class PSiRefractiveIndexMethod:
 
 
 if __name__ == '__main__':
-    m = PSiRefractiveIndexMethod()
+    m = PSiRefractiveIndexMethod(rox=0.1)
     stack = PSiOpticalStack(m)
     stack.reset_stack()
     t1, t2, p1, p2, N = stack.optimal_Bragg_stack(633e-9)
@@ -215,15 +211,22 @@ if __name__ == '__main__':
     p_supp = 0.7   # TODO: this is 0.5
     stack.add_thick_layer(t_supp, p_supp)
 
-    s_test = PSiReflectanceSimulator(None)
-    s_test.load_spectrum()
-    #s_test.load_from_ocean_view("temp/ad5_Relative__0__20.txt")
+    #s_test = PSiReflectanceSimulator(None)
+    #s_test.load_spectrum()
+    #s_test.load_from_ocean_view("temp/AD1_Relative__0__00.txt")
+    import time
     simu = PSiReflectanceSimulator(stack)
-    simu.compute_refl_spectum(s_test.lbd)
+    t0 = time.time()
+    simu.compute_refl_spectum()#s_test.lbd)
+    dt = time.time() - t0
+    print("Elapsed time:", dt)  # ~ 0.63 -> ~ 0.34
     #simu.save_spectrum()
-    simu.show_R_T("test_method_loc.png")
+    #simu.show_R_T("modele_avec_ox.png")
     #Rp, d_lbd = simu.extract_Rp_FWHM()
-    simu.compare_R(s_test, "test_R_50-70p_Oox.png")
+    #simu.compare_R(s_test, "test_R_50-70p.png")
     #stack.produce_I_dt_data()
 
-
+# param: lbd_T, R_T, dR
+# moyenne avec plusieurs points au centre pour réduire le bruit
+# fit nécessaire ?
+# Rugosité: flake sur substrat, SEM avant oxidation (coupe)

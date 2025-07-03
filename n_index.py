@@ -89,7 +89,7 @@ def get_n_eff(P, lbd, solv_type, ox_state=0.1, mixing_method="Looyenga"):
         for i, l in enumerate(lbd):
             sol[i] = get_n_eff(P, l, solv_type)
         return sol
-    r_ox = 0.1  # volume fraction of Si that was oxidized -> (1-P)*[SiO2]/([SiO2]+[Si])
+    r_ox = ox_state  # volume fraction of Si that was oxidized -> (1-P)*[SiO2]/([SiO2]+[Si])
     vol_ox_rel = 2.27  # volume of SiO2 wrt volume of Si (same molar content)
     vol_inc = vol_ox_rel-1  # 1.27
     n1 = get_n_Si(lbd)
