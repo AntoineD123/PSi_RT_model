@@ -1,16 +1,23 @@
 import numpy as np
 import sympy
 import sympy.abc
+from pathlib import Path
 
+# Units
 um = 1e-6
 nm = 1e-9
-l_Si_um,   n_Si,   k_Si   = np.loadtxt("data-literature/n_k_Si.txt", skiprows=1, unpack=True)
-l_SiO2_um, n_SiO2, k_SiO2 = np.loadtxt("data-literature/n_k_SiO2.txt", skiprows=1, unpack=True)
-l_Si = l_Si_um*um
-l_SiO2 = l_SiO2_um*um
+pkg_loc = Path(__file__).parent
 
-rho_lim = [0.5, 0.7]  # min/max porosities
-target_lbd = 633e-9   # m
+# Import data once and use several times
+l_Si_um,   n_Si,   k_Si   = np.loadtxt(pkg_loc.joinpath("data-literature/n_k_Si.txt"),   skiprows=1, unpack=True)
+l_SiO2_um, n_SiO2, k_SiO2 = np.loadtxt(pkg_loc.joinpath("data-literature/n_k_SiO2.txt"), skiprows=1, unpack=True)
+l_Al_um,   n_Al,   k_Al   = np.loadtxt(pkg_loc.joinpath("data-literature/n_k_Al.txt"),   skiprows=1, unpack=True)
+l_Si   = l_Si_um*um
+l_SiO2 = l_SiO2_um*um
+l_Al   = l_Al_um*um
+
+# Values used as boundaries for computations and optimizations
+p_min_max = [0.5, 0.7]  # min/max porosities
 
 def approx_1st_order(x_arr, x_test, y_arr, z_arr=None):
     # @PRE:
@@ -65,21 +72,46 @@ def get_n_SiO2(lbd):
     n, k = approx_1st_order(l_SiO2, lbd, n_SiO2, k_SiO2)
     return n + k*1j
 
+def get_n_Al(lbd):
+    # https://refractiveindex.info/?shelf=main&book=Al&page=Cheng
+    # (epitaxially grown Al film at room temperature)
+    # using
+    # 1) F. Cheng, P.-H. Su, J. Choi, S. Gwo, X. Li, C.-K. Shih. Epitaxial growth of
+    # atomically smooth aluminum on silicon and its intrinsic optical properties.
+    # ACS Nano 10, 9852-9860 (2016)
+    if lbd < l_Al[0] or lbd > l_Al[-1]:
+        raise ValueError(f"Can't find {lbd/nm}nm in range ({l_Al[0]/nm}, {l_Al[-1]/nm}) for the wavelength")
+    n, k = approx_1st_order(l_Al, lbd, n_Al, k_Al)
+    return n + k*1j
+
 def get_n_solv(lbd, solv_type):
-    if solv_type == "air":
+    # Returns a constant refractive index 'solv_type' (real float/complex)
+    # or the refractive index of the material 'solv_type' at
+    # wavelength 'lbd'.
+    # 'solv_type' is a float, complex, or one of the following str:
+    # "air" or "Al" (aluminum)
+    if type(solv_type) is not str:
+        return solv_type
+    elif solv_type == "air":
         # https://refractiveindex.info/?shelf=main&book=N2&page=Peck-0C
         return 1.003
+    elif solv_type == "Al":
+        return get_n_Al(lbd)
     else:
         raise ValueError(f"Refractive index not computer for {solv_type}")
 
 # Low porosities - Bruggeman model:
 # P*(get_n_solv-n_eff**2)/(gmixing_methodet_n_solv-2*n_eff**2) + (1-P)*(n_SiOx-n_eff**2)/(n_SiOx+2*n_eff**2) = 0
 # High porosities - Looyenga model:
-def get_n_eff(P, lbd, solv_type, ox_state=0.1, mixing_method="Looyenga"):
+def get_n_eff(P, lbd, solv_type, ox_state=0., mixing_method="Looyenga"):
     # Compute effective n
-    # P: porosity in [0 (full), 1 (hollow)] (before oxidation)
+    # P: porosity in [0 (full); 1 (hollow)] (before oxidation)
     # lbd: wavelength [m]
     # solv: solvent in pores ("air")
+    # ox_state: oxidation degree in [0 (pure silicon); 1 (fully oxidized)]
+    # mixing_method: rule used to compute n, with the values of n
+    # of the different constituents: "Looyenga" (LLL method), "Bruggeman", "CRIM"
+    # (linear combination)
     if P == 0:
         return get_n_Si(lbd)
     if P == 1:
@@ -89,24 +121,25 @@ def get_n_eff(P, lbd, solv_type, ox_state=0.1, mixing_method="Looyenga"):
         for i, l in enumerate(lbd):
             sol[i] = get_n_eff(P, l, solv_type)
         return sol
-    r_ox = ox_state  # volume fraction of Si that was oxidized -> (1-P)*[SiO2]/([SiO2]+[Si])
+    r_ox = ox_state*(1-P)  # volume fraction of the flake that was oxidized -> [SiO2]/2.27
+    r_ox = min(r_ox, P/1.27)
     vol_ox_rel = 2.27  # volume of SiO2 wrt volume of Si (same molar content)
     vol_inc = vol_ox_rel-1  # 1.27
     n1 = get_n_Si(lbd)
     n2 = get_n_SiO2(lbd)
     n3 = get_n_solv(lbd, solv_type)
     if mixing_method == "Bruggeman":
+        # Very slow...
         n = sympy.abc.x
         # using relative molar volume of SiO2 wrt Si ??
         f = (1-P-r_ox) * (n1-n)/(n1+2*n) + \
             vol_ox_rel*r_ox * (n2-n)/(n2+2*n) + \
             (P-vol_inc*r_ox) * (n3-n)/(n3+2*n)
         res = sympy.solve(f, n)
-        # [(-1.39873889115937 - 0.0395169586948642*I,), (-0.61912151730361 - 0.00085134248036138*I,),
-        # (2.40448222723785 + 0.0725646093174908*I,)]
-        print(res)
         return complex(res[-1])
     elif mixing_method == "CRIM":
+        # Fastest
+        # Complex refractive index method
         return (1-P-r_ox) * n1 + vol_ox_rel*r_ox * n2 + (P-vol_inc*r_ox) * n3
     elif mixing_method == "Looyenga":
         exp = 4./3.
@@ -119,6 +152,8 @@ def get_n_eff(P, lbd, solv_type, ox_state=0.1, mixing_method="Looyenga"):
 
 
 def apply_on_arr(f, x_arr, **kwargs):
+    # Return an array, with the result of the function f
+    # applied (1st arg of f) on each items in the list x_arr.
     dtype = complex
     if "dtype" in kwargs.keys():
         dtype = kwargs.pop("dtype")
@@ -127,23 +162,29 @@ def apply_on_arr(f, x_arr, **kwargs):
         res[i] = f(x_i, **kwargs)
     return res
 
+
+
 if __name__ == '__main__':
+    # Testing the code
     import matplotlib.pyplot as plt
-    lbd = np.linspace(400, 850, 100)*1e-9
+    lbd = np.linspace(450, 800, 100)*1e-9
+    target_lbd = 633e-9
+    target_lbd_nm = 633
 
     solv = "air"
     nair = apply_on_arr(get_n_solv, lbd, solv_type=solv)
     nSi = apply_on_arr(get_n_Si, lbd)
     nSiO2 = apply_on_arr(get_n_SiO2, lbd)
 
-    p1_arr = np.linspace(rho_lim[0], rho_lim[1], 50)
+    p1_arr = np.linspace(p_min_max[0], p_min_max[1], 50)
     m = "CRIM"
     nPSiOx_CRIM = apply_on_arr(get_n_eff, p1_arr, lbd=target_lbd, solv_type=solv, mixing_method=m)
     m = "Looyenga"
     nPSiOx_Looyenga = apply_on_arr(get_n_eff, p1_arr, lbd=target_lbd, solv_type=solv, mixing_method=m)
     m = "Bruggeman"
     nPSiOx_Bruggeman = apply_on_arr(get_n_eff, p1_arr, lbd=target_lbd, solv_type=solv, mixing_method=m)
-    
+
+    # Evolution of complex n with the different models, for different materials (p=0.)
     plt.figure()
     plt.ylabel("n [-]")
     plt.xlabel("lbd [nm]")
@@ -151,30 +192,34 @@ if __name__ == '__main__':
     plt.plot(lbd*1e9, nSi.real, label="$Si$")
     plt.plot(lbd*1e9, nSiO2.real, label="$Si0_2$")
     plt.legend()
+    plt.savefig(f"results/n_pure_l={target_lbd_nm}nm.jpg")
 
     plt.figure()
-    plt.ylabel("$\\alpha$ [1/m]")
+    plt.ylabel("$\\kappa$ [-]")
     plt.xlabel("lbd [nm]")
     plt.plot(lbd*1e9, nair.imag, label="air")
     plt.plot(lbd*1e9, nSi.imag, label="$Si$")
     plt.plot(lbd*1e9, nSiO2.imag, label="$Si0_2$")
     plt.legend()
+    plt.savefig(f"results/k_pure_l={target_lbd_nm}nm.jpg")
 
+    # Values of n (complex) at 'target_lbd', for different porosities
     fig, ax = plt.subplots(2, 1, sharex=True)
     ax[0].set_ylabel("n [-]")
-    ax[0].plot(p1_arr, nPSiOx_CRIM.real, label="CRIM")
-    ax[0].plot(p1_arr, nPSiOx_Looyenga.real, label="Looyenga")
+    ax[0].plot(p1_arr, nPSiOx_CRIM.real, label="CRI")
+    ax[0].plot(p1_arr, nPSiOx_Looyenga.real, label="LLL")
     ax[0].plot(p1_arr, nPSiOx_Bruggeman.real, label="Bruggeman")
     ax[0].legend()
 
-    ax[1].set_ylabel("$\\alpha$ [1/m]")
+    ax[1].set_ylabel("$\\kappa$ [-]")
     ax[1].set_xlabel("porosity [-]")
-    ax[1].plot(p1_arr, nPSiOx_CRIM.imag, label="CRIM")
-    ax[1].plot(p1_arr, nPSiOx_Looyenga.imag, label="Looyenga")
+    ax[1].plot(p1_arr, nPSiOx_CRIM.imag, label="CRI")
+    ax[1].plot(p1_arr, nPSiOx_Looyenga.imag, label="LLL")
     ax[1].plot(p1_arr, nPSiOx_Bruggeman.imag, label="Bruggeman")
     ax[1].legend()
-    plt.savefig(f"results/n_PSiOx_l={target_lbd}nm_rOx={5}%.jpg")
+    plt.savefig(f"results/n_PSi_l={target_lbd_nm}nm.jpg")
 
+    # If Bruggeman is more precise, compute the relative error of the 2 other methods
     fig, ax = plt.subplots(2, 1, sharex=True)
     errC1 = np.abs(nPSiOx_CRIM.real-nPSiOx_Bruggeman.real)/nPSiOx_Bruggeman.real*100
     errC2 = np.abs(nPSiOx_CRIM.imag-nPSiOx_Bruggeman.imag)/nPSiOx_Bruggeman.imag*100
@@ -183,14 +228,16 @@ if __name__ == '__main__':
     ax[0].set_ylabel("Relative error on n [%]")
     ax[0].plot(p1_arr, errC1, label="CRIM")
     ax[0].plot(p1_arr, errL1, label="Looyenga")
+    ax[0].legend()
 
-    ax[1].set_ylabel("Relative error on $\\alpha$ [%]")
+    ax[1].set_ylabel("Relative error on $\\kappa$ [%]")
     ax[1].set_xlabel("porosity [-]")
     ax[1].plot(p1_arr, errC2, label="CRIM")
     ax[1].plot(p1_arr, errL2, label="Looyenga")
+    ax[1].legend()
 
     data = [p1_arr, nPSiOx_Bruggeman, nPSiOx_Looyenga, nPSiOx_CRIM]
-    np.savetxt("results/n_2_methods.txt", np.transpose(data), header="p[-] n_Bruggeman[-] n_Looyenga[-] n_CRIM[-]")
-    plt.savefig(f"results/n_err_PSiOx_rOx={5}%.jpg")
+    plt.savefig(f"results/n_err_PSi_l={target_lbd_nm}nm.jpg")
     plt.show()
+
 

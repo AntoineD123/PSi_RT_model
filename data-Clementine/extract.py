@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import seaborn as sns
 
 fname = "raw_data.txt"
 
@@ -32,25 +33,59 @@ P3 = []
 r1 = []
 r2 = []
 r3 = []
+P_all = {}
+r_all = {}
 current_I = I[0]
 current_I_index = 0
+print("J [mA/cm^2], P(average) [%], r(average) [nm/s], sig_P_rel [%], sig_r_rel[%]")
+sig_tot_P = 0.
+sig_tot_r = 0.
 for I_test in unique_I:
     keep_ind = (I == I_test)
     P_test = P[keep_ind]
     r_test = r[keep_ind]
+    mean_P = sum(P_test)/len(P_test)
+    mean_r = sum(r_test)/len(r_test)
+    sig_P = np.std(P_test)
+    sig_r = np.std(r_test)
+    print(I_test, mean_P, mean_r, sig_P, sig_r)
     P1.append(min(P_test))
     r1.append(min(r_test))
     P3.append(max(P_test))
     r3.append(max(r_test))
-    P2.append(sum(P_test)/len(P_test))
-    r2.append(sum(r_test)/len(r_test))
+    P2.append(mean_P)
+    r2.append(mean_r)
+    P_all[I_test] = P_test
+    r_all[I_test] = r_test
+sig_tot_P /= len(unique_I)
+sig_tot_r /= len(unique_I)
+
+# Plot with statistics
+data_dict = {'I':I, 'r':r, 'P':P}
+fig = plt.figure()
+plt.ylabel("p [%]")
+plt.xlabel("J [mA/cm^2]")
+#plt.boxplot(P_all, positions=unique_I)#, notch=True, patch_artist=True, boxprops=dict(facecolor='skyblue'))
+sns.boxplot(data_dict, y='P', x='I', native_scale=True)
+#I_eq = np.arange(len(unique_I))
+plt.plot(unique_I, P2, "k.--")
+plt.savefig("p_j_boxplot.png")
+fig = plt.figure()
+plt.ylabel("r [nm/s]")
+plt.xlabel("J [mA/cm^2]")
+#plt.boxplot(r_all, positions=unique_I, notch=True, patch_artist=True)#, boxprops=dict(facecolor='skyblue'))
+sns.boxplot(data_dict, y='r', x='I', native_scale=True)
+plt.plot(unique_I, r2, "k.--")
+plt.savefig("r_j_boxplot.png")
+plt.show()
+exit()
 
 # Show this in a graph
 fig, ax = plt.subplots(2, 1, sharex=True,
                        figsize=[6.4, 6.4])  # default: [6.4, 4.8]
 ax[0].set_ylabel("porosity [%]")
 ax[1].set_ylabel("etch rate [nm/s]")
-ax[1].set_ylabel("current density [mA/cm^2]")
+ax[1].set_xlabel("current density [mA/cm^2]")
 
 ax[0].plot(unique_I, P2, "k.-")
 ax[0].plot(unique_I, P1, "k:")
