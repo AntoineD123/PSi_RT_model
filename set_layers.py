@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.optimize import minimize
-from etch_recipe import load_values, get_I_dt, percent
-from n_index import get_n_eff, p_min_max
+from .etch_recipe import load_values, get_I_dt, percent
+from .n_index import get_n_eff, p_min_max
 
 
 # Functions used

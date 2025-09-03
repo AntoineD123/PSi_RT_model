@@ -3,10 +3,10 @@
 
 import os.path
 import numpy as np
-from n_index import get_n_eff, pkg_loc
-from reflectance import Optical_1D_local_tmm, save_data, load_prev_data, plot_show_R_T, plot_those_R
-from set_layers import compute_t, get_opt_porosities
-from etch_recipe import load_values, get_I_dt
+from .n_index import get_n_eff, pkg_loc
+from .reflectance import Optical_1D_local_tmm, save_data, load_prev_data, plot_show_R_T, plot_those_R
+from .set_layers import compute_t, get_opt_porosities
+from .etch_recipe import load_values, get_I_dt
 
 
 # External function (used to show the results):

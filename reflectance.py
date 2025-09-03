@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from n_index import get_n_eff, pkg_loc
+from .n_index import get_n_eff, pkg_loc
 
 
 # Fast assignations

@@ -1,6 +1,5 @@
 import numpy as np
-import sympy
-import sympy.abc
+from scipy.optimize import fsolve
 from pathlib import Path
 
 # Units
@@ -100,9 +99,17 @@ def get_n_solv(lbd, solv_type):
     else:
         raise ValueError(f"Refractive index not computer for {solv_type}")
 
-# Low porosities - Bruggeman model:
-# P*(get_n_solv-n_eff**2)/(gmixing_methodet_n_solv-2*n_eff**2) + (1-P)*(n_SiOx-n_eff**2)/(n_SiOx+2*n_eff**2) = 0
-# High porosities - Looyenga model:
+def f(arg_in, n1, n2, n3, r_ox, vol_ox_rel, vol_inc, P):
+    n = complex(arg_in[0], arg_in[1])
+    err = (1-P-r_ox) * (n1-n)/(n1+2*n) + \
+        vol_ox_rel*r_ox * (n2-n)/(n2+2*n) + \
+        (P-vol_inc*r_ox) * (n3-n)/(n3+2*n)
+    return err.real, err.imag
+n_brugg_init = np.array([1.5, 0.])
+
+# Low porosities - Bruggeman model
+# High porosities - Looyenga model
+# Function used to compute a refractive index of PSi, in a general case
 def get_n_eff(P, lbd, solv_type, ox_state=0., mixing_method="Looyenga"):
     # Compute effective n
     # P: porosity in [0 (full); 1 (hollow)] (before oxidation)
@@ -129,14 +136,9 @@ def get_n_eff(P, lbd, solv_type, ox_state=0., mixing_method="Looyenga"):
     n2 = get_n_SiO2(lbd)
     n3 = get_n_solv(lbd, solv_type)
     if mixing_method == "Bruggeman":
-        # Very slow...
-        n = sympy.abc.x
-        # using relative molar volume of SiO2 wrt Si ??
-        f = (1-P-r_ox) * (n1-n)/(n1+2*n) + \
-            vol_ox_rel*r_ox * (n2-n)/(n2+2*n) + \
-            (P-vol_inc*r_ox) * (n3-n)/(n3+2*n)
-        res = sympy.solve(f, n)
-        return complex(res[-1])
+        res = fsolve(f, x0=n_brugg_init, diag=[1., 1e3],   # tolerance: xtol=1.49012e-8
+                                    args=(n1, n2, n3, r_ox, vol_ox_rel, vol_inc, P))
+        return complex(res[0], res[1])
     elif mixing_method == "CRIM":
         # Fastest
         # Complex refractive index method

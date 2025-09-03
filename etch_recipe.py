@@ -1,5 +1,5 @@
 import numpy as np
-from n_index import approx_1st_order, p_min_max, apply_on_arr, pkg_loc
+from .n_index import approx_1st_order, p_min_max, apply_on_arr, pkg_loc
 
 # Units
 percent = 0.01
